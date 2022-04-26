@@ -4,7 +4,7 @@ import rsa
 from signal import signal, SIGINT
 from threading import Event, Thread
 from common import BTPPacket, SERVER_ADDR, RSA_BITS, DRINKS
-from rdt import RDTSender, RDTReceiver
+from rdt import RDTConnection
 
 LAST_CLIENT_ID = 0
 ClIENT_KEYS = {}
@@ -27,16 +27,14 @@ def get_client_id():
 
 
 class ClientRequestHandler:
-    def __init__(self, sender, receiver):
-        self.sender = sender
-        self.receiver = receiver
-        self.client = receiver.peer
+    def __init__(self, conn):
+        self.conn = conn
+        self.client = conn.peer
         self.finished = False
 
     def handle(self, data=None):
         if data is None:
-            print("no data...req still ongoing")
-            pkt_header, pkt_payload = self.receiver.recv()
+            pkt_header, pkt_payload = self.conn.recv()
         else:
             pkt_header, pkt_payload = data
             data = None
@@ -44,27 +42,27 @@ class ClientRequestHandler:
         if pkt_header.fin == 1:
             print("got fin req")
             sndpkt = BTPPacket(fin=1, ack=1)
-            self.sender.send(sndpkt)
+            self.conn.send(sndpkt)
             self.finished = True
         elif pkt_header.rsa == 1:
             new_client_key = rsa.PublicKey.load_pkcs1(pkt_payload)
             ClIENT_KEYS[self.client] = new_client_key
             sndpkt = BTPPacket(payload=S_PUB_KEY.save_pkcs1(), rsa=1, ack=1)
-            self.sender.send(sndpkt)
+            self.conn.send(sndpkt)
         else:
             message = decrypt(pkt_payload).decode("ASCII").strip()
 
             if message == "OPEN":
-                try:
+                if self.client in CLIENTS:
                     cid = CLIENTS[self.client]
-                except KeyError:
+                else:
                     cid = get_client_id()
                     CLIENTS[self.client] = cid
 
                 resp = f"SETID {cid}"
                 resp = encrypt(resp.encode("ASCII"), ClIENT_KEYS[self.client])
                 sndpkt = BTPPacket(payload=resp)
-                self.sender.send(sndpkt)
+                self.conn.send(sndpkt)
                 if cid not in TABS:
                     TABS[cid] = 0
             else:
@@ -73,23 +71,21 @@ class ClientRequestHandler:
                 command_string = message[1].split(" ")
                 if id_string[0] != "ID":
                     # TODO error...unknown command
-                    pass
-                 
-                client_id = int(id_string[1])
-                try:
-                    CLIENTS[client_id]
-                except KeyError:
+                    return
+
+                cid = int(id_string[1])
+                if cid != CLIENTS[self.client]:
                     # TODO error...unauthorised
-                    pass
+                    return
 
                 if command_string[0] == "CLOSE":
                     del CLIENTS[self.client]
-                    resp = f"TOTAL {TABS[client_id]:.2f}"
+                    resp = f"TOTAL {TABS[cid]:.2f}"
                     resp = encrypt(resp.encode("ASCII"), ClIENT_KEYS[self.client])
                     sndpkt = BTPPacket(payload=resp)
-                    self.sender.send(sndpkt)
+                    self.conn.send(sndpkt)
                     del ClIENT_KEYS[self.client]
-                    del TABS[client_id]
+                    del TABS[cid]
                 elif command_string[0] == "ADD":
                     drink_id = int(command_string[1])
                     quantity = 1
@@ -97,14 +93,14 @@ class ClientRequestHandler:
                         quantity = int(command_string[2])
                     
                     order_price = DRINKS[drink_id].price * quantity
-                    TABS[client_id] += order_price
-                    resp = f"TOTAL {TABS[client_id]:.2f}"
+                    TABS[cid] += order_price
+                    resp = f"TOTAL {TABS[cid]:.2f}"
                     resp = encrypt(resp.encode("ASCII"), ClIENT_KEYS[self.client])
                     sndpkt = BTPPacket(payload=resp)
-                    self.sender.send(sndpkt)
+                    self.conn.send(sndpkt)
                 else:
                     # TODO error...unknown command
-                    pass
+                    return
 
 class Server:
     def __init__(self, event):
@@ -114,19 +110,15 @@ class Server:
         self.done = event
 
     def get_incoming(self):
-        receiver = RDTReceiver(self.socket)
-        req = receiver.recv()
+        conn = RDTConnection(self.socket)
+        req = conn.recv()
         if req is None:
             return
 
         pkt_header, pkt_payload = req
-        sender = RDTSender(self.socket, receiver.peer)
-        return pkt_header, pkt_payload, sender, receiver
+        return pkt_header, pkt_payload, conn
 
     def handle_requests(self):
-        print(self.current_request)
-        if self.current_request is not None:
-            print(self.current_request.finished)
         if not (self.current_request is None or self.current_request.finished):
             print("continue req")
             self.current_request.handle()
@@ -135,8 +127,8 @@ class Server:
             if incoming is None:
                 return
             
-            header, body, sender, receiver = incoming
-            self.current_request = ClientRequestHandler(sender, receiver)
+            header, body, conn = incoming
+            self.current_request = ClientRequestHandler(conn)
             self.current_request.handle((header, body))
 
     def serve_once(self):

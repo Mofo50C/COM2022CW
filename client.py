@@ -1,7 +1,7 @@
 import socket
 import rsa
 from common import DRINKS, BTPPacket, SERVER_ADDR, RSA_BITS
-from rdt import RDTSender, RDTReceiver
+from rdt import RDTConnection
 
 DRINK_MENU = "./barMenu.txt"
 CLIENT_ADDR = ("127.0.0.1", 45561)
@@ -21,15 +21,14 @@ def decrypt(data):
 
 class Client:
     def __init__(self):
-        self.sender = RDTSender(CLIENT_SOCK, SERVER_ADDR)
-        self.receiver = RDTReceiver(CLIENT_SOCK, SERVER_ADDR)
+        self.conn = RDTConnection(CLIENT_SOCK, SERVER_ADDR)
     
     def finish_request(self):
         print("FINISHING REQUEST")
         while True:
             sndpkt = BTPPacket(fin=1)
-            self.sender.send(sndpkt)
-            pkt_header, pkt_payload = self.receiver.recv()
+            self.conn.send(sndpkt)
+            pkt_header, pkt_payload = self.conn.recv()
             if pkt_header.fin == 1 and pkt_header.ack == 1:
                 break
 
@@ -38,8 +37,8 @@ class Client:
         message = "OPEN"
         message = encrypt(message.encode("ASCII"))
         sndpkt = BTPPacket(message)
-        self.sender.send(sndpkt)
-        pkt_header, pkt_payload = self.receiver.recv()
+        self.conn.send(sndpkt)
+        pkt_header, pkt_payload = self.conn.recv()
         resp = decrypt(pkt_payload).decode("ASCII").split(" ")
         cid = int(resp[1])
         print(f"TAB OPENED: {cid}")
@@ -51,8 +50,8 @@ class Client:
         message = auth_msg + f"CLOSE"
         message = encrypt(message.encode("ASCII"))
         sndpkt = BTPPacket(message)
-        self.sender.send(sndpkt)
-        pkt_header, pkt_payload = self.receiver.recv()
+        self.conn.send(sndpkt)
+        pkt_header, pkt_payload = self.conn.recv()
         resp = decrypt(pkt_payload).decode("ASCII").split(" ")
         final_tab = float(resp[1])
         return final_tab
@@ -66,17 +65,17 @@ class Client:
 
         message = encrypt(message.encode("ASCII"))
         sndpkt = BTPPacket(message)
-        self.sender.send(sndpkt)
-        pkt_header, pkt_payload = self.receiver.recv()
+        self.conn.send(sndpkt)
+        pkt_header, pkt_payload = self.conn.recv()
         resp = decrypt(pkt_payload).decode("ASCII").split(" ")
         tab = float(resp[1])
         return tab
     
     def send(self, sndpkt):
-        self.sender.send(sndpkt)
+        self.conn.send(sndpkt)
     
     def recv(self):
-        return self.receiver.recv()
+        return self.conn.recv()
 
 
 def exchange_rsa():
