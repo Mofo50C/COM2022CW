@@ -6,7 +6,7 @@ from dataclasses import dataclass
 # constants
 BUFFER_SIZE = 4096
 RSA_BITS = 512
-RDT_TIMEOUT = 2
+RDT_TIMEOUT = 5
 SERVER_ADDR = ("127.0.0.1", 45560)
 MENU_FILE = "./menu.json"
 HEADER_FORMAT = "!LHH"

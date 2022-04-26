@@ -51,10 +51,6 @@ class RDTSender(AbstractRDT):
 
         while self._waiting:
             print("Waiting for ACK...")
-            r, _, _ = select([self.sock], [], [], SELECTOR_TIMEOUT)
-            if not r:
-                print("Error while waiting for ack")
-                return
 
             try:                
                 data, addr = self.sock.recvfrom(BUFFER_SIZE)  

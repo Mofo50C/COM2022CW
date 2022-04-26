@@ -34,10 +34,10 @@ class ClientRequestHandler:
 
     def handle(self, data=None):
         if data is None:
-            pkt_header, pkt_payload = self.conn.recv()
-        else:
-            pkt_header, pkt_payload = data
-            data = None
+            if (data := self.conn.recv()) is None:
+                return
+        
+        pkt_header, pkt_payload = data
         
         if pkt_header.fin == 1:
             print("got fin req")
