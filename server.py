@@ -11,8 +11,8 @@ ClIENT_KEYS = {}
 CLIENTS = {}
 TABS = {}
 S_PUB_KEY, S_PRIV_KEY = rsa.newkeys(RSA_BITS, accurate=True)
-DONE = Event()
-DONE.clear()
+EXIT_EVENT = Event()
+EXIT_EVENT.clear()
 
 def encrypt(data, key):
     return rsa.encrypt(data, key)
@@ -102,6 +102,7 @@ class ClientRequestHandler:
                     # TODO error...unknown command
                     return
 
+
 class Server:
     def __init__(self, event):
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -131,10 +132,6 @@ class Server:
             self.current_request = ClientRequestHandler(conn)
             self.current_request.handle((header, body))
 
-    def serve_once(self):
-        self.handle_requests()
-        self.socket.close()
-
     def serve_forever(self):
         while not self.done.is_set():
             self.handle_requests()
@@ -143,13 +140,17 @@ class Server:
 
 
 def run_server():
-    server = Server(DONE)
+    server = Server(EXIT_EVENT)
     server.serve_forever()
 
-signal(SIGINT, lambda signal, framnum: DONE.set())
-th = Thread(target=run_server)
-th.start()
-while th.is_alive():
-    continue
+def main():
+    signal(SIGINT, lambda signal, framnum: EXIT_EVENT.set())
+    th = Thread(target=run_server)
+    th.start()
+    while th.is_alive():
+        continue
 
-print("Server shutting down...")
+    print("Server shutting down...")
+
+
+main()
