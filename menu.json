@@ -1,31 +1,31 @@
 [
     {
-        "id": 1,
+        "id": "01",
         "name": "beer",
         "price": 1.65
     },
     {
-        "id": 2,
+        "id": "02",
         "name": "cider",
         "price": 1.40
     },
     {
-        "id": 3,
+        "id": "03",
         "name": "wine",
         "price": 4.99
     },
     {
-        "id": 4,
+        "id": "04",
         "name": "vodka",
         "price": 2.49
     },
     {
-        "id": 5,
+        "id": "05",
         "name": "whisky",
         "price": 3.00
     },
     {
-        "id": 6,
+        "id": "06",
         "name": "cola",
         "price": 1.20
     }

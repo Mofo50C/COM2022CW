@@ -11,6 +11,7 @@ ClIENT_KEYS = {}
 CLIENTS = {}
 TABS = {}
 S_PUB_KEY, S_PRIV_KEY = rsa.newkeys(RSA_BITS, accurate=True)
+S_KEY_PEM = S_PUB_KEY.save_pkcs1()
 EXIT_EVENT = Event()
 EXIT_EVENT.clear()
 
@@ -45,10 +46,9 @@ class ClientRequestHandler:
             self.conn.send(sndpkt)
             self.finished = True
         elif pkt_header.rsa == 1:
-            new_client_key = rsa.PublicKey.load_pkcs1(pkt_payload)
-            ClIENT_KEYS[self.client] = new_client_key
-            sndpkt = BTPPacket(payload=S_PUB_KEY.save_pkcs1(), rsa=1, ack=1)
+            sndpkt = BTPPacket(payload=S_KEY_PEM, rsa=1, ack=1)
             self.conn.send(sndpkt)
+            ClIENT_KEYS[self.client] = rsa.PublicKey.load_pkcs1(pkt_payload)
         else:
             message = decrypt(pkt_payload).decode("ASCII").strip()
 
@@ -87,7 +87,7 @@ class ClientRequestHandler:
                     del ClIENT_KEYS[self.client]
                     del TABS[cid]
                 elif command_string[0] == "ADD":
-                    drink_id = int(command_string[1])
+                    drink_id = command_string[1]
                     quantity = 1
                     if len(command_string) > 2:
                         quantity = int(command_string[2])

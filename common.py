@@ -72,7 +72,6 @@ with open(MENU_FILE, "r") as f:
     DRINKS = json.load(f)
 
 DRINKS = [Drink(x) for x in DRINKS]
-DRINKS = {int(d.id): d for d in DRINKS}
-
+DRINKS = {d.id: d for d in DRINKS}
 
 

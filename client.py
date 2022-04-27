@@ -8,6 +8,7 @@ CLIENT_ADDR = ("127.0.0.1", 45561)
 CLIENT_SOCK = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 CLIENT_SOCK.bind(CLIENT_ADDR)
 C_PUB_KEY, C_PRIV_KEY = rsa.newkeys(RSA_BITS, accurate=True)
+C_KEY_PEM = C_PUB_KEY.save_pkcs1()
 CLIENT_ID = None
 S_KEY = None
 TAB = 0
@@ -77,7 +78,7 @@ class Client:
     
     def exchange_rsa(self):
         while True:
-            sndpkt = BTPPacket(C_PUB_KEY.save_pkcs1(), rsa=1)
+            sndpkt = BTPPacket(C_KEY_PEM, rsa=1)
             self._send(sndpkt)
             pkt_header, pkt_payload = self._recv()
             if pkt_header.rsa == 1 and pkt_header.ack == 1:
@@ -159,22 +160,27 @@ def main_menu():
                 print_order(drinks_to_order)
                 print_drink_menu()
                 usr_drink_choice = None
+                
                 while True:
                     usr_drink_choice = input(">>> ")
                     try:
                         usr_drink_choice = int(usr_drink_choice)
-                        if usr_drink_choice in DRINKS.keys():
+                        usr_drink_choice = f"0{usr_drink_choice}"
+                        print(usr_drink_choice)
+                        if usr_drink_choice in DRINKS:
                             break
                     except ValueError as e:
                         if usr_drink_choice.upper() in ["X", "S"]:
+                            finish_order = True
                             break
-
-                if isinstance(usr_drink_choice, int):
+                
+                if not finish_order:
                     quantity = 0
                     while True:
                         try:
                             quantity = int(input("How many? "))
-                            break
+                            if quantity > 0 and quantity <= 50:
+                                break
                         except ValueError as e:
                             pass
                             
@@ -183,16 +189,16 @@ def main_menu():
                         drinks_to_order[usr_drink_choice] = (drink, prev_q + quantity)
                     else:
                         drinks_to_order[usr_drink_choice] = (DRINKS[usr_drink_choice], quantity)
-                
-                if isinstance(usr_drink_choice, str):
-                    finish_order = True
+                else:
                     if usr_drink_choice.upper() == "S" and len(drinks_to_order) > 0:
                         handle_order(drinks_to_order)
+    
         elif usr_menu_choice == 2:
             if TAB == 0:
                 print("No open tab...")
             else:
                 print(f"Current tab: £{TAB:.2f}")
+
         elif usr_menu_choice == 3:
             handle_exit()
             print("Thank you and goodbye!")
