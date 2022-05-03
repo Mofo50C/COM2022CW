@@ -70,12 +70,10 @@ class ClientRequestHandler:
                 id_string = message[0].split(" ")
                 command_string = message[1].split(" ")
                 if id_string[0] != "ID":
-                    # TODO error...unknown command
                     return
 
                 cid = int(id_string[1])
                 if cid != CLIENTS[self.client]:
-                    # TODO error...unauthorised
                     return
 
                 if command_string[0] == "CLOSE":
@@ -98,9 +96,6 @@ class ClientRequestHandler:
                     resp = encrypt(resp.encode("ASCII"), ClIENT_KEYS[self.client])
                     sndpkt = BTPPacket(payload=resp)
                     self.conn.send(sndpkt)
-                else:
-                    # TODO error...unknown command
-                    return
 
 
 class Server:
