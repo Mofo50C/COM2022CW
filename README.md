@@ -5,9 +5,9 @@ Bar Tab Protocol for COM2022 coursework
 
 ## Usage
 
-- Change server address in common.py and client address in client.py
+- Change server address in common.py and client address in client.py (optional)
 
-- Run server first then in another shell run client.
+- Run server.py first then in another shell run client.py
 
 - Follow menu instructions on client
 
