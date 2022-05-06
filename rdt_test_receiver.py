@@ -35,7 +35,7 @@ def test_wrong_ack_send():
 
 # Test 7
 def test_invalid_packet_receive():
-    my_conn = RDTConnection(this_sock, peer=peer_addr)
+    my_conn = RDTConnection(this_sock, peer=peer_addr, debug=False)
     incoming = my_conn.recv()
     assert_test(7, (incoming is not None))
 

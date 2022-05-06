@@ -5,6 +5,7 @@ from rdt import RDTConnection
 
 DRINK_MENU = "./barMenu.txt"
 CLIENT_ADDR = ("127.0.0.1", 45561)
+CLIENT_COMPAT_MODE = True
 CLIENT_SOCK = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 CLIENT_SOCK.bind(CLIENT_ADDR)
 C_PUB_KEY, C_PRIV_KEY = rsa.newkeys(RSA_BITS, accurate=True)
@@ -21,7 +22,7 @@ def decrypt(data):
     return rsa.decrypt(data, C_PRIV_KEY)
 
 
-class Client:
+class CompatClient:
     def __init__(self):
         self.conn = RDTConnection(CLIENT_SOCK, SERVER_ADDR)
     
@@ -77,6 +78,7 @@ class Client:
         return tab
     
     def exchange_rsa(self):
+        print("EXCHANGING RSA")
         while True:
             sndpkt = BTPPacket(C_KEY_PEM, rsa=1)
             self._send(sndpkt)
@@ -95,13 +97,45 @@ class Client:
         return self.conn.recv()
 
 
+class Client(CompatClient):
+    def order(self, orders):
+        if len(orders) == 1:
+            drink = orders.keys()[0]
+            quantity = orders[drink]
+            return super().order(drink, quantity)
+        
+        print("ORDERING MULTIPLE")
+        auth_msg = f"ID {CLIENT_ID}\r\n"
+        message = auth_msg + f"ADD\r\n"
+        
+        for drink, quantity in orders:
+            message += f"{drink.id}"
+            if quantity > 1:
+                message += f" {quantity}"
+            
+            message += "\r\n"
+
+        message = encrypt(message.encode("ASCII"))
+        sndpkt = BTPPacket(message)
+        self._send(sndpkt)
+        pkt_header, pkt_payload = self._recv()
+        resp = decrypt(pkt_payload).decode("ASCII").split(" ")
+        tab = float(resp[1])
+        self.finish_request()
+        return tab
+
+
 def handle_order(orders):
     global TAB
     print("Ordering...")
 
-    for drink, quantity in orders.values():
+    if CLIENT_COMPAT_MODE:
+        for drink, quantity in orders.values():
+            client = CompatClient()
+            TAB = client.order(drink, quantity)
+    else:
         client = Client()
-        TAB = client.order(drink, quantity)
+        TAB = client.order(orders)
     
     print(f"Total tab: £{TAB:.2f}")
 
@@ -112,7 +146,7 @@ def handle_exit():
         return
 
     print("Closing tab...")
-    client = Client()
+    client = CompatClient()
     TAB = client.close_tab()
     print(f"Please pay the tab £{TAB:.2f} at the bar.")
 
@@ -194,10 +228,7 @@ def main_menu():
                         handle_order(drinks_to_order)
     
         elif usr_menu_choice == 2:
-            if TAB == 0:
-                print("No open tab...")
-            else:
-                print(f"Current tab: £{TAB:.2f}")
+            print(f"Current tab: £{TAB:.2f}")
 
         elif usr_menu_choice == 3:
             handle_exit()
@@ -208,11 +239,11 @@ def main():
     global S_KEY, CLIENT_ID
 
     if S_KEY is None:
-        client = Client()
+        client = CompatClient()
         S_KEY = client.exchange_rsa()
 
     if CLIENT_ID is None:
-        client = Client()
+        client = CompatClient()
         CLIENT_ID = client.open_tab()
 
     main_menu()

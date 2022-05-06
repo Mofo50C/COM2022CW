@@ -132,7 +132,7 @@ class RDTReceiver(AbstractRDT):
 
 
 class RDTConnection:
-    def __init__(self, sock, peer=None, seq=0, debug=False):
+    def __init__(self, sock, peer=None, seq=0, debug=True):
         self.sock = sock
         self.peer = peer
         self.seq = seq

@@ -11,13 +11,13 @@ this_sock.bind(this_addr)
 
 # Test 5
 def test_no_ack_receive():
-    my_conn = RDTConnection(this_sock, peer_addr)
+    my_conn = RDTConnection(this_sock, peer_addr, debug=False)
     pkt = BTPPacket("Hello receiver".encode("ASCII"))
     my_conn.send(pkt)
 
 # Test 6
 def test_wrong_ack_receive():
-    my_conn = RDTConnection(this_sock, peer_addr)
+    my_conn = RDTConnection(this_sock, peer_addr, debug=False)
     pkt = BTPPacket("Hello receiver".encode("ASCII"))
     my_conn.send(pkt)
 

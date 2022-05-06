@@ -3,7 +3,7 @@ import rsa
 
 from signal import signal, SIGINT
 from threading import Event, Thread
-from common import BTPPacket, SERVER_ADDR, RSA_BITS, DRINKS
+from common import BTPPacket, SERVER_ADDR, RSA_BITS, DRINKS, SERVER_COMPAT_MODE
 from rdt import RDTConnection
 
 LAST_CLIENT_ID = 0
@@ -66,17 +66,26 @@ class ClientRequestHandler:
                 if cid not in TABS:
                     TABS[cid] = 0
             else:
-                message = message.split("\r\n")
+                message = message.split("\r\n", 1)
                 id_string = message[0].split(" ")
-                command_string = message[1].split(" ")
+                command_string = message[1]
+                
                 if id_string[0] != "ID":
-                    return
+                    if not SERVER_COMPAT_MODE:
+                        # TODO error...unknown command
+                        pass
+                    else:
+                        return
 
                 cid = int(id_string[1])
                 if cid != CLIENTS[self.client]:
-                    return
+                    if not SERVER_COMPAT_MODE:
+                        # TODO error...unauthorised
+                        pass
+                    else:
+                        return
 
-                if command_string[0] == "CLOSE":
+                if command_string == "CLOSE":
                     del CLIENTS[self.client]
                     resp = f"TOTAL {TABS[cid]:.2f}"
                     resp = encrypt(resp.encode("ASCII"), ClIENT_KEYS[self.client])
@@ -84,18 +93,37 @@ class ClientRequestHandler:
                     self.conn.send(sndpkt)
                     del ClIENT_KEYS[self.client]
                     del TABS[cid]
-                elif command_string[0] == "ADD":
-                    drink_id = command_string[1]
-                    quantity = 1
-                    if len(command_string) > 2:
-                        quantity = int(command_string[2])
-                    
-                    order_price = DRINKS[drink_id].price * quantity
-                    TABS[cid] += order_price
-                    resp = f"TOTAL {TABS[cid]:.2f}"
-                    resp = encrypt(resp.encode("ASCII"), ClIENT_KEYS[self.client])
-                    sndpkt = BTPPacket(payload=resp)
-                    self.conn.send(sndpkt)
+                else:
+                    order_string = command_string.split("\r\n")
+                    if len(order_string) == 1:
+                        order_string = order_string[0].split(" ")
+                        if order_string[0] == "ADD":
+                            drink_id = order_string[1]
+                            quantity = 1
+                            if len(order_string) > 2:
+                                quantity = int(order_string[2])
+                            
+                            order_price = DRINKS[drink_id].price * quantity
+                            TABS[cid] += order_price
+                            resp = f"TOTAL {TABS[cid]:.2f}"
+                            resp = encrypt(resp.encode("ASCII"), ClIENT_KEYS[self.client])
+                            sndpkt = BTPPacket(payload=resp)
+                            self.conn.send(sndpkt)
+                        else:
+                            if not SERVER_COMPAT_MODE:
+                                # TODO error...unknown command
+                                pass
+                            else:
+                                return
+                    elif order_string[0] == "ADD" and not SERVER_COMPAT_MODE:
+                        # TODO multiple adds
+                        pass
+                    else:
+                        if not SERVER_COMPAT_MODE:
+                            # TODO error...unknown command
+                            pass
+                        else:
+                            return
 
 
 class Server:
