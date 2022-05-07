@@ -64,10 +64,7 @@ class CompatClient:
     def order(self, drink, quantity):
         print("ORDERING")
         auth_msg = f"ID {CLIENT_ID}\r\n"
-        message = auth_msg + f"ADD {drink.id}"
-        if quantity > 1:
-            message += f" {quantity}"
-
+        message = auth_msg + f"ADD {drink.id} {quantity}"
         message = encrypt(message.encode("ASCII"))
         sndpkt = BTPPacket(message)
         self._send(sndpkt)

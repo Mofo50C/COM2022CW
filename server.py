@@ -41,11 +41,12 @@ class ClientRequestHandler:
         pkt_header, pkt_payload = data
         
         if pkt_header.fin == 1:
-            print("got fin req")
+            print("FIN REQ")
             sndpkt = BTPPacket(fin=1, ack=1)
             self.conn.send(sndpkt)
             self.finished = True
         elif pkt_header.rsa == 1:
+            print("RSA REQ")
             sndpkt = BTPPacket(payload=S_KEY_PEM, rsa=1, ack=1)
             self.conn.send(sndpkt)
             ClIENT_KEYS[self.client] = rsa.PublicKey.load_pkcs1(pkt_payload)
@@ -53,6 +54,7 @@ class ClientRequestHandler:
             message = decrypt(pkt_payload).decode("ASCII").strip()
 
             if message == "OPEN":
+                print("OPEN REQ")
                 if self.client in CLIENTS:
                     cid = CLIENTS[self.client]
                 else:
@@ -68,24 +70,31 @@ class ClientRequestHandler:
             else:
                 message = message.split("\r\n", 1)
                 id_string = message[0].split(" ")
-                command_string = message[1]
                 
-                if id_string[0] != "ID":
+                if id_string[0] != "ID" and not SERVER_COMPAT_MODE:
+                    # TODO error...unauthorised
+                    pass
+                else:
+                    return
+                
+                try:
+                    cid = int(id_string[1])
+                except ValueError:
                     if not SERVER_COMPAT_MODE:
                         # TODO error...unknown command
                         pass
                     else:
                         return
 
-                cid = int(id_string[1])
-                if cid != CLIENTS[self.client]:
-                    if not SERVER_COMPAT_MODE:
-                        # TODO error...unauthorised
-                        pass
-                    else:
-                        return
+                if cid != CLIENTS[self.client] and not SERVER_COMPAT_MODE:
+                    # TODO error...unauthorised
+                    pass
+                else:
+                    return
 
+                command_string = message[1]
                 if command_string == "CLOSE":
+                    print("CLOSE REQ")
                     del CLIENTS[self.client]
                     resp = f"TOTAL {TABS[cid]:.2f}"
                     resp = encrypt(resp.encode("ASCII"), ClIENT_KEYS[self.client])
@@ -96,12 +105,13 @@ class ClientRequestHandler:
                 else:
                     order_string = command_string.split("\r\n")
                     if len(order_string) == 1:
-                        order_string = order_string[0].split(" ")
-                        if order_string[0] == "ADD":
-                            drink_id = order_string[1]
+                        print("SINGLE ADD REQ")
+                        add_string = order_string[0].split(" ")
+                        if add_string[0] == "ADD":
+                            drink_id = add_string[1]
                             quantity = 1
-                            if len(order_string) > 2:
-                                quantity = int(order_string[2])
+                            if len(add_string) > 2:
+                                quantity = int(add_string[2])
                             
                             order_price = DRINKS[drink_id].price * quantity
                             TABS[cid] += order_price
@@ -109,21 +119,27 @@ class ClientRequestHandler:
                             resp = encrypt(resp.encode("ASCII"), ClIENT_KEYS[self.client])
                             sndpkt = BTPPacket(payload=resp)
                             self.conn.send(sndpkt)
+                    elif not SERVER_COMPAT_MODE:
+                        if order_string[0] == "ADD":
+                            print("MULTIPLE ADD REQ")
+                            total = 0
+                            for order in order_string[1:]:
+                                drink_string = order.split(" ")
+                                drink_id = drink_string[0]
+                                quantity = 1
+                                if len(drink_string) == 1:
+                                    quantity = int(drink_string[1])
+                                
+                                total += DRINKS[drink_id].price * quantity
+                            
+                            TABS[cid] += total
+                            resp = f"TOTAL {TABS[cid]:.2f}"
+                            resp = encrypt(resp.encode("ASCII"), ClIENT_KEYS[self.client])
+                            sndpkt = BTPPacket(payload=resp)
+                            self.conn.send(sndpkt)
                         else:
-                            if not SERVER_COMPAT_MODE:
-                                # TODO error...unknown command
-                                pass
-                            else:
-                                return
-                    elif order_string[0] == "ADD" and not SERVER_COMPAT_MODE:
-                        # TODO multiple adds
-                        pass
-                    else:
-                        if not SERVER_COMPAT_MODE:
                             # TODO error...unknown command
                             pass
-                        else:
-                            return
 
 
 class Server:
