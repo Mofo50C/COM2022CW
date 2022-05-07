@@ -3,11 +3,11 @@ import rsa
 
 from signal import signal, SIGINT
 from threading import Event, Thread
-from common import BTPPacket, SERVER_ADDR, RSA_BITS, DRINKS, SERVER_COMPAT_MODE
+from common import BTPPacket, SERVER_ADDR, RSA_BITS, DRINKS, COMPAT_MODE
 from rdt import RDTConnection
 
 LAST_CLIENT_ID = 0
-ClIENT_KEYS = {}
+CLIENT_KEYS = {}
 CLIENTS = {}
 TABS = {}
 S_PUB_KEY, S_PRIV_KEY = rsa.newkeys(RSA_BITS, accurate=True)
@@ -33,6 +33,18 @@ class ClientRequestHandler:
         self.client = conn.peer
         self.finished = False
 
+    def send_response(self, message):
+        resp = encrypt(message.encode("ASCII"), CLIENT_KEYS[self.client])
+        sndpkt = BTPPacket(resp)
+        self.conn.send(sndpkt)
+
+    def handle_error(self, status, message):
+        self.finished = True
+        if not COMPAT_MODE:
+            resp = f"ERROR {status} {message}"
+            self.send_response(resp)
+        
+
     def handle(self, data=None):
         if data is None:
             if (data := self.conn.recv()) is None:
@@ -49,7 +61,7 @@ class ClientRequestHandler:
             print("RSA REQ")
             sndpkt = BTPPacket(payload=S_KEY_PEM, rsa=1, ack=1)
             self.conn.send(sndpkt)
-            ClIENT_KEYS[self.client] = rsa.PublicKey.load_pkcs1(pkt_payload)
+            CLIENT_KEYS[self.client] = rsa.PublicKey.load_pkcs1(pkt_payload)
         else:
             message = decrypt(pkt_payload).decode("ASCII").strip()
 
@@ -62,34 +74,25 @@ class ClientRequestHandler:
                     CLIENTS[self.client] = cid
 
                 resp = f"SETID {cid}"
-                resp = encrypt(resp.encode("ASCII"), ClIENT_KEYS[self.client])
-                sndpkt = BTPPacket(payload=resp)
-                self.conn.send(sndpkt)
+                self.send_response(resp)
                 if cid not in TABS:
                     TABS[cid] = 0
             else:
                 message = message.split("\r\n", 1)
                 id_string = message[0].split(" ")
                 
-                if id_string[0] != "ID" and not SERVER_COMPAT_MODE:
-                    # TODO error...unauthorised
-                    pass
-                else:
+                if id_string[0] != "ID":
+                    self.handle_error(1, "UKNOWN COMMAND")
                     return
                 
                 try:
                     cid = int(id_string[1])
                 except ValueError:
-                    if not SERVER_COMPAT_MODE:
-                        # TODO error...unknown command
-                        pass
-                    else:
-                        return
+                    self.handle_error(1, "UNKNOWN COMMAND")
+                    return
 
-                if cid != CLIENTS[self.client] and not SERVER_COMPAT_MODE:
-                    # TODO error...unauthorised
-                    pass
-                else:
+                if cid != CLIENTS[self.client]:
+                    self.handle_error(2, "UNAUTHORISED")
                     return
 
                 command_string = message[1]
@@ -97,17 +100,15 @@ class ClientRequestHandler:
                     print("CLOSE REQ")
                     del CLIENTS[self.client]
                     resp = f"TOTAL {TABS[cid]:.2f}"
-                    resp = encrypt(resp.encode("ASCII"), ClIENT_KEYS[self.client])
-                    sndpkt = BTPPacket(payload=resp)
-                    self.conn.send(sndpkt)
-                    del ClIENT_KEYS[self.client]
+                    self.send_response(resp)
+                    del CLIENT_KEYS[self.client]
                     del TABS[cid]
                 else:
                     order_string = command_string.split("\r\n")
                     if len(order_string) == 1:
-                        print("SINGLE ADD REQ")
                         add_string = order_string[0].split(" ")
                         if add_string[0] == "ADD":
+                            print("SINGLE ADD REQ")
                             drink_id = add_string[1]
                             quantity = 1
                             if len(add_string) > 2:
@@ -116,10 +117,8 @@ class ClientRequestHandler:
                             order_price = DRINKS[drink_id].price * quantity
                             TABS[cid] += order_price
                             resp = f"TOTAL {TABS[cid]:.2f}"
-                            resp = encrypt(resp.encode("ASCII"), ClIENT_KEYS[self.client])
-                            sndpkt = BTPPacket(payload=resp)
-                            self.conn.send(sndpkt)
-                    elif not SERVER_COMPAT_MODE:
+                            self.send_response(resp)
+                    elif not COMPAT_MODE:
                         if order_string[0] == "ADD":
                             print("MULTIPLE ADD REQ")
                             total = 0
@@ -127,19 +126,16 @@ class ClientRequestHandler:
                                 drink_string = order.split(" ")
                                 drink_id = drink_string[0]
                                 quantity = 1
-                                if len(drink_string) == 1:
+                                if len(drink_string) > 1:
                                     quantity = int(drink_string[1])
                                 
                                 total += DRINKS[drink_id].price * quantity
                             
                             TABS[cid] += total
                             resp = f"TOTAL {TABS[cid]:.2f}"
-                            resp = encrypt(resp.encode("ASCII"), ClIENT_KEYS[self.client])
-                            sndpkt = BTPPacket(payload=resp)
-                            self.conn.send(sndpkt)
+                            self.send_response(resp)
                         else:
-                            # TODO error...unknown command
-                            pass
+                            self.handle_error(1, "UNKNOWN COMMAND")
 
 
 class Server:
@@ -160,7 +156,7 @@ class Server:
 
     def handle_requests(self):
         if not (self.current_request is None or self.current_request.finished):
-            print("continue req")
+            print("continue...")
             self.current_request.handle()
         else: # new request
             incoming = self.get_incoming()

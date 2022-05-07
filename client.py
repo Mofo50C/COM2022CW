@@ -1,11 +1,10 @@
 import socket
 import rsa
-from common import DRINKS, BTPPacket, SERVER_ADDR, RSA_BITS
+from common import DRINKS, BTPPacket, SERVER_ADDR, RSA_BITS, COMPAT_MODE
 from rdt import RDTConnection
 
 DRINK_MENU = "./barMenu.txt"
-CLIENT_ADDR = ("127.0.0.1", 45561)
-CLIENT_COMPAT_MODE = True
+CLIENT_ADDR = ("127.0.0.1", 45560)
 CLIENT_SOCK = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 CLIENT_SOCK.bind(CLIENT_ADDR)
 C_PUB_KEY, C_PRIV_KEY = rsa.newkeys(RSA_BITS, accurate=True)
@@ -38,11 +37,10 @@ class CompatClient:
     def open_tab(self):
         print("OPENING TAB")
         message = "OPEN"
-        message = encrypt(message.encode("ASCII"))
-        sndpkt = BTPPacket(message)
-        self._send(sndpkt)
-        pkt_header, pkt_payload = self._recv()
-        resp = decrypt(pkt_payload).decode("ASCII").split(" ")
+        self.send_command(message)
+        if (resp := self.get_response()) is None:
+            return
+
         cid = int(resp[1])
         print(f"TAB OPENED: {cid}")
         self.finish_request()
@@ -50,26 +48,22 @@ class CompatClient:
     
     def close_tab(self):
         print("CLOSING TAB")
-        auth_msg = f"ID {CLIENT_ID}\r\n"
-        message = auth_msg + f"CLOSE"
-        message = encrypt(message.encode("ASCII"))
-        sndpkt = BTPPacket(message)
-        self._send(sndpkt)
-        pkt_header, pkt_payload = self._recv()
-        resp = decrypt(pkt_payload).decode("ASCII").split(" ")
+        message = "CLOSE"
+        self.send_command(message, auth=True)
+        if (resp := self.get_response()) is None:
+            return
+
         final_tab = float(resp[1])
         self.finish_request()
         return final_tab
 
     def order(self, drink, quantity):
         print("ORDERING")
-        auth_msg = f"ID {CLIENT_ID}\r\n"
-        message = auth_msg + f"ADD {drink.id} {quantity}"
-        message = encrypt(message.encode("ASCII"))
-        sndpkt = BTPPacket(message)
-        self._send(sndpkt)
-        pkt_header, pkt_payload = self._recv()
-        resp = decrypt(pkt_payload).decode("ASCII").split(" ")
+        message = f"ADD {drink.id} {quantity}"
+        self.send_command(message, auth=True)
+        if (resp := self.get_response()) is None: 
+            return
+
         tab = float(resp[1])
         self.finish_request()
         return tab
@@ -86,6 +80,20 @@ class CompatClient:
         self.finish_request()
         return rsa.PublicKey.load_pkcs1(pkt_payload)
 
+    def send_command(self, msg, auth=False):
+        command = ""
+        if auth:
+            command += f"ID {CLIENT_ID}\r\n"
+        
+        command += msg
+        command = encrypt(command.encode("ASCII"))
+        sndpkt = BTPPacket(command)
+        self._send(sndpkt)
+
+    def get_response(self):
+        _, pkt_payload = self._recv()
+        resp = decrypt(pkt_payload).decode("ASCII")
+        return resp.split(" ")
     
     def _send(self, sndpkt):
         self.conn.send(sndpkt)
@@ -96,43 +104,82 @@ class CompatClient:
 
 class Client(CompatClient):
     def order(self, orders):
+        message = ""
         if len(orders) == 1:
+            print("ORDERING")
             drink = orders.keys()[0]
             quantity = orders[drink]
-            return super().order(drink, quantity)
-        
-        print("ORDERING MULTIPLE")
-        auth_msg = f"ID {CLIENT_ID}\r\n"
-        message = auth_msg + f"ADD\r\n"
-        
-        for drink, quantity in orders:
-            message += f"{drink.id}"
-            if quantity > 1:
-                message += f" {quantity}"
+            message = f"ADD {drink.id} {quantity}"
+            self.send_command(message, auth=True)
+        else:
+            print("ORDERING MULTIPLE")
+            message = f"ADD\r\n"
             
-            message += "\r\n"
+            print(orders)
+            for drink, quantity in orders.values():
+                message += f"{drink.id}"
+                if quantity > 1:
+                    message += f" {quantity}"
+                
+                message += "\r\n"
 
-        message = encrypt(message.encode("ASCII"))
-        sndpkt = BTPPacket(message)
-        self._send(sndpkt)
-        pkt_header, pkt_payload = self._recv()
-        resp = decrypt(pkt_payload).decode("ASCII").split(" ")
+            self.send_command(message, auth=True)
+
+        if not (resp := self.get_response()): return
         tab = float(resp[1])
         self.finish_request()
         return tab
 
+    def get_response(self):
+        resp = super().get_response()
+        if resp[0] == "ERROR":
+            print(f"ERROR {resp[1]}: {resp[2]}")
+            return
+        else:
+            return resp
+
+
+def error_check(res, message):
+    if res is None:
+        print(message)
+        close_and_exit()
+
+def close_and_exit():
+    CLIENT_SOCK.close()
+    exit()
+
+def begin_rsa_exchange():
+    if COMPAT_MODE:
+        client = CompatClient()
+    else:
+        client = Client()
+
+    return client.exchange_rsa()
+
+def open_new_tab():
+    if COMPAT_MODE:
+        client = CompatClient()
+        res = client.open_tab()
+    else:
+        client = Client()
+        res = client.open_tab()
+        error_check(res, "ERROR WHILE OPENING TAB!")
+    
+    return res
 
 def handle_order(orders):
     global TAB
     print("Ordering...")
 
-    if CLIENT_COMPAT_MODE:
+    if COMPAT_MODE:
         for drink, quantity in orders.values():
             client = CompatClient()
             TAB = client.order(drink, quantity)
     else:
         client = Client()
-        TAB = client.order(orders)
+        res = client.order(orders)
+        error_check(res, "ERROR WHILE ORDERING!")
+        TAB = res
     
     print(f"Total tab: £{TAB:.2f}")
 
@@ -143,8 +190,15 @@ def handle_exit():
         return
 
     print("Closing tab...")
-    client = CompatClient()
-    TAB = client.close_tab()
+    if COMPAT_MODE:
+        client = CompatClient()
+        TAB = client.close_tab()
+    else:
+        client = Client()
+        res = client.close_tab()
+        error_check(res, "ERROR WHILE CLOSING TAB!")
+        TAB = res
+
     print(f"Please pay the tab £{TAB:.2f} at the bar.")
 
 def print_drink_menu():
@@ -236,15 +290,13 @@ def main():
     global S_KEY, CLIENT_ID
 
     if S_KEY is None:
-        client = CompatClient()
-        S_KEY = client.exchange_rsa()
+        S_KEY = begin_rsa_exchange()
 
     if CLIENT_ID is None:
-        client = CompatClient()
-        CLIENT_ID = client.open_tab()
+        CLIENT_ID = open_new_tab()
 
     main_menu()
-    CLIENT_SOCK.close()
+    close_and_exit()
 
 
 main()
