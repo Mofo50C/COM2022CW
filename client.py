@@ -41,6 +41,7 @@ class CompatClient:
         if (resp := self.get_response()) is None:
             return
 
+        resp = resp.split(" ")
         cid = int(resp[1])
         print(f"TAB OPENED: {cid}")
         self.finish_request()
@@ -53,6 +54,7 @@ class CompatClient:
         if (resp := self.get_response()) is None:
             return
 
+        resp = resp.split(" ")
         final_tab = float(resp[1])
         self.finish_request()
         return final_tab
@@ -64,6 +66,7 @@ class CompatClient:
         if (resp := self.get_response()) is None: 
             return
 
+        resp = resp.split(" ")
         tab = float(resp[1])
         self.finish_request()
         return tab
@@ -93,7 +96,7 @@ class CompatClient:
     def get_response(self):
         _, pkt_payload = self._recv()
         resp = decrypt(pkt_payload).decode("ASCII")
-        return resp.split(" ")
+        return resp
     
     def _send(self, sndpkt):
         self.conn.send(sndpkt)
@@ -131,9 +134,11 @@ class Client(CompatClient):
         return tab
 
     def get_response(self):
-        resp = super().get_response()
-        if resp[0] == "ERROR":
-            print(f"ERROR {resp[1]}: {resp[2]}")
+        _, pkt_payload = self._recv()
+        resp = decrypt(pkt_payload).decode("ASCII")
+        error_string = resp.split(" ", 2)
+        if error_string[0] == "ERROR":
+            print(resp)
             return
         else:
             return resp
