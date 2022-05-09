@@ -27,8 +27,7 @@ To enable the propietary extensions, change COMPAT_MODE to False in common.py
 
 ## Testing Reliable Data Transfer
 
-These tests are only ran on localhost and simulates packet loss. They internally conduct tests 5, 6 and 7 from the protocol design document. Run tests with:
+These tests are only ran on localhost and simulates packet loss. They internally conduct tests 5, 6 and 7 from the protocol design document. 
 
-`python rdt_test.py`
-
-The implementation for the tests are in rdt_test_receiver.p and rdt_test_sender.py and simulate a "sender" and a "receiver".
+- Run the receiver first on a separate terminal with `python rdt_test_receiver.py`.
+- Then run the sender after on another terminal with `python rdt_test_sender.py`.
